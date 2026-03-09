@@ -108,6 +108,16 @@ export function buildHistory(
         continue
       }
 
+      const prevMsg = history[history.length - 1]
+      if (prevMsg && prevMsg.assistantResponseMessage) {
+        history.push({
+          userInputMessage: {
+            content: 'Continue',
+            modelId: resolved,
+            origin: KIRO_CONSTANTS.ORIGIN_AI_EDITOR
+          }
+        })
+      }
       history.push({ assistantResponseMessage: arm })
     }
   }

@@ -28,16 +28,30 @@ export class ErrorHandler {
     context: RequestContext,
     showToast: ToastFunction
   ): Promise<{ shouldRetry: boolean; newContext?: RequestContext; switchAccount?: boolean }> {
-    if (response.status === 400 && context.reductionFactor > 0.4) {
-      const newFactor = context.reductionFactor - 0.2
-      showToast(`Context too long. Retrying with ${Math.round(newFactor * 100)}%...`, 'warning')
-      return {
-        shouldRetry: true,
-        newContext: { ...context, reductionFactor: newFactor }
+    const readBody = async (): Promise<string> => {
+      try {
+        const body = JSON.parse(await response.clone().text())
+        return body.message || body.Message || body.__type || JSON.stringify(body)
+      } catch {
+        return ''
+      }
+    }
+
+    if (response.status === 400) {
+      const reason = await readBody()
+      if (context.reductionFactor > 0.4) {
+        const newFactor = context.reductionFactor - 0.2
+        showToast(`400: ${reason || 'unknown'}. Retrying with ${Math.round(newFactor * 100)}%...`, 'warning')
+        return {
+          shouldRetry: true,
+          newContext: { ...context, reductionFactor: newFactor }
+        }
       }
     }
 
     if (response.status === 401 && context.retry < this.config.rate_limit_max_retries) {
+      const reason = await readBody()
+      showToast(`401: ${reason || 'Unauthorized'}. Retrying...`, 'warning')
       return {
         shouldRetry: true,
         newContext: { ...context, retry: context.retry + 1 }
@@ -60,7 +74,7 @@ export class ErrorHandler {
       if (account.failCount < 5) {
         const delay = 1000 * Math.pow(2, account.failCount - 1)
         showToast(
-          `Server Error (500): ${errorMessage}. Retrying in ${Math.ceil(delay / 1000)}s...`,
+          `500: ${errorMessage}. Retrying in ${Math.ceil(delay / 1000)}s...`,
           'warning'
         )
         await this.sleep(delay)
@@ -72,7 +86,7 @@ export class ErrorHandler {
         )
         await this.repository.batchSave(this.accountManager.getAccounts())
         showToast(
-          `Server Error (500): ${errorMessage}. Marking account as unhealthy and switching...`,
+          `500: ${errorMessage}. Marking account as unhealthy and switching...`,
           'warning'
         )
         return { shouldRetry: true, switchAccount: true }
@@ -87,7 +101,7 @@ export class ErrorHandler {
       if (count > 1) {
         return { shouldRetry: true, switchAccount: true }
       }
-      showToast(`Rate limited. Waiting ${Math.ceil(w / 1000)}s...`, 'warning')
+      showToast(`429: Rate limited. Waiting ${Math.ceil(w / 1000)}s...`, 'warning')
       await this.sleep(w)
       return { shouldRetry: true }
     }
@@ -116,11 +130,14 @@ export class ErrorHandler {
       if (isPermanent) {
         account.failCount = 10
       }
+      showToast(`${response.status}: ${errorReason}. Switching account...`, 'warning')
       this.accountManager.markUnhealthy(account, errorReason)
       await this.repository.batchSave(this.accountManager.getAccounts())
       return { shouldRetry: true, switchAccount: true }
     }
 
+    const reason = await readBody()
+    showToast(`${response.status}: ${reason || response.statusText}`, 'error')
     return { shouldRetry: false }
   }
 
