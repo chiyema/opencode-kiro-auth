@@ -181,7 +181,7 @@ export function transformToCodeWhisperer(
   }
   if (orphanedTrs.length > 0) {
     const prev = history[history.length - 1]
-    if (prev && !prev.userInputMessage) {
+    if (!prev || prev.assistantResponseMessage) {
       history.push({
         userInputMessage: {
           content: 'Running tools...',
