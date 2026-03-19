@@ -43,7 +43,7 @@ export class ResponseHandler {
     conversationId: string
   ): Promise<Response> {
     const text = await response.text()
-    const p = parseEventStream(text)
+    const p = parseEventStream(text, model)
     const oai: any = {
       id: conversationId,
       object: 'chat.completion',
