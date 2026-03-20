@@ -60,9 +60,34 @@ export function transformToCodeWhisperer(
   let history = buildHistory(msgs, resolved, toolResultLimit)
   const historyLimit = Math.floor((longCtx ? 4250000 : 850000) * reductionFactor)
   history = truncateHistory(history, historyLimit)
-  history = injectSystemPrompt(history, sys, resolved)
+
   const curMsg = msgs[msgs.length - 1]
   if (!curMsg) throw new Error('Empty')
+
+  const isRealUserMsg =
+    curMsg.role === 'user' &&
+    !(Array.isArray(curMsg.content) && curMsg.content.some((p: any) => p.type === 'tool_result'))
+
+  if (isRealUserMsg && msgs.length >= 2) {
+    const prevMsg = msgs[msgs.length - 2]
+    if (prevMsg?.role === 'assistant') {
+      const lastHistEntry = history[history.length - 1]
+      const historyEndsWithUser = lastHistEntry?.userInputMessage
+      if (historyEndsWithUser) {
+        let prevText = ''
+        if (Array.isArray(prevMsg.content)) {
+          for (const p of prevMsg.content) {
+            if (p.type === 'text') prevText += p.text || ''
+          }
+        } else prevText = getContentText(prevMsg)
+        if (prevText) {
+          history.push({ assistantResponseMessage: { content: prevText } })
+        }
+      }
+    }
+  }
+
+  history = injectSystemPrompt(history, sys, resolved)
   let curContent = ''
   const curTrs: any[] = []
   const curImgs: any[] = []
