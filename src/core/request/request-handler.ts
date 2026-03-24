@@ -60,7 +60,6 @@ export class RequestHandler {
     const think = model.endsWith('-thinking') || !!body.providerOptions?.thinkingConfig
     const budget = body.providerOptions?.thinkingConfig?.thinkingBudget || 20000
 
-    let reductionFactor = 1.0
     let retry = 0
     let consecutiveNullAccounts = 0
     const retryContext = this.retryStrategy.createContext()
@@ -93,14 +92,7 @@ export class RequestHandler {
         continue
       }
 
-      const sdkPrep = this.prepareSdkRequest(
-        init?.body,
-        model,
-        auth,
-        think,
-        budget,
-        reductionFactor
-      )
+      const sdkPrep = this.prepareSdkRequest(init?.body, model, auth, think, budget, showToast)
 
       const apiTimestamp = this.config.enable_log_api_request ? logger.getTimestamp() : null
       if (apiTimestamp) {
@@ -150,13 +142,12 @@ export class RequestHandler {
             e,
             mockResponse,
             acc,
-            { reductionFactor, retry },
+            { retry },
             showToast
           )
 
           if (errorResult.shouldRetry) {
             if (errorResult.newContext) {
-              reductionFactor = errorResult.newContext.reductionFactor
               retry = errorResult.newContext.retry
             }
             if (errorResult.switchAccount) {
@@ -168,11 +159,7 @@ export class RequestHandler {
           throw new Error(`Kiro Error: ${httpStatus}`)
         }
 
-        const networkResult = await this.errorHandler.handleNetworkError(
-          e,
-          { reductionFactor, retry },
-          showToast
-        )
+        const networkResult = await this.errorHandler.handleNetworkError(e, { retry }, showToast)
 
         if (networkResult.shouldRetry) {
           if (networkResult.newContext) {
@@ -196,9 +183,9 @@ export class RequestHandler {
     auth: KiroAuthDetails,
     think: boolean,
     budget: number,
-    reductionFactor: number
+    showToast?: (message: string, variant: 'info' | 'warning' | 'success' | 'error') => void
   ): SdkPreparedRequest {
-    return transformToSdkRequest(body, model, auth, think, budget, reductionFactor)
+    return transformToSdkRequest(body, model, auth, think, budget, showToast)
   }
 
   private handleSuccessfulRequest(acc: ManagedAccount): void {

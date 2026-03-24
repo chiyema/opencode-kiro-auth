@@ -5,7 +5,7 @@ import {
   extractTextFromParts
 } from '../../plugin/image-handler.js'
 import type { CodeWhispererMessage } from '../../plugin/types'
-import { getContentText, sanitizeHistory, truncate } from './message-transformer.js'
+import { getContentText } from './message-transformer.js'
 import { deduplicateToolResults } from './tool-transformer.js'
 
 /**
@@ -79,11 +79,7 @@ export function collapseAgenticLoops(history: CodeWhispererMessage[]): CodeWhisp
   return result
 }
 
-export function buildHistory(
-  msgs: any[],
-  resolved: string,
-  toolResultLimit: number
-): CodeWhispererMessage[] {
+export function buildHistory(msgs: any[], resolved: string): CodeWhispererMessage[] {
   let history: CodeWhispererMessage[] = []
   for (let i = 0; i < msgs.length - 1; i++) {
     const m = msgs[i]
@@ -98,7 +94,7 @@ export function buildHistory(
         for (const p of m.content) {
           if (p.type === 'tool_result') {
             trs.push({
-              content: [{ text: truncate(getContentText(p.content || p), toolResultLimit) }],
+              content: [{ text: getContentText(p.content || p) }],
               status: 'success',
               toolUseId: p.tool_use_id
             })
@@ -123,13 +119,13 @@ export function buildHistory(
       if (m.tool_results) {
         for (const tr of m.tool_results)
           trs.push({
-            content: [{ text: truncate(getContentText(tr), toolResultLimit) }],
+            content: [{ text: getContentText(tr) }],
             status: 'success',
             toolUseId: tr.tool_call_id
           })
       } else {
         trs.push({
-          content: [{ text: truncate(getContentText(m), toolResultLimit) }],
+          content: [{ text: getContentText(m) }],
           status: 'success',
           toolUseId: m.tool_call_id
         })
@@ -217,25 +213,6 @@ export function injectSystemPrompt(
     })
   }
   return history
-}
-
-export function truncateHistory(
-  history: CodeWhispererMessage[],
-  historyLimit: number
-): CodeWhispererMessage[] {
-  let sanitized = sanitizeHistory(history)
-  let historySize = JSON.stringify(sanitized).length
-  while (historySize > historyLimit && sanitized.length > 2) {
-    sanitized.shift()
-    while (sanitized.length > 0) {
-      const first = sanitized[0]
-      if (first && first.userInputMessage) break
-      sanitized.shift()
-    }
-    sanitized = sanitizeHistory(sanitized)
-    historySize = JSON.stringify(sanitized).length
-  }
-  return sanitized
 }
 
 export function historyHasToolCalling(history: CodeWhispererMessage[]): boolean {

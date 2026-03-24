@@ -5,7 +5,6 @@ import type { ManagedAccount } from '../../plugin/types'
 type ToastFunction = (message: string, variant: 'info' | 'warning' | 'success' | 'error') => void
 
 interface RequestContext {
-  reductionFactor: number
   retry: number
 }
 
@@ -39,17 +38,8 @@ export class ErrorHandler {
 
     if (response.status === 400) {
       const reason = await readBody()
-      if (context.reductionFactor > 0.4) {
-        const newFactor = context.reductionFactor - 0.2
-        showToast(
-          `400: ${reason || 'unknown'}. Retrying with ${Math.round(newFactor * 100)}%...`,
-          'warning'
-        )
-        return {
-          shouldRetry: true,
-          newContext: { ...context, reductionFactor: newFactor }
-        }
-      }
+      showToast(`400: ${reason || 'unknown'}`, 'error')
+      return { shouldRetry: false }
     }
 
     if (response.status === 401 && context.retry < this.config.rate_limit_max_retries) {

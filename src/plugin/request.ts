@@ -1,18 +1,16 @@
 import * as crypto from 'crypto'
 import * as os from 'os'
-import { KIRO_CONSTANTS, buildUrl, extractRegionFromArn, isLongContextModel } from '../constants.js'
+import { KIRO_CONSTANTS, buildUrl, extractRegionFromArn } from '../constants.js'
 import {
   buildHistory,
   extractToolNamesFromHistory,
   historyHasToolCalling,
-  injectSystemPrompt,
-  truncateHistory
+  injectSystemPrompt
 } from '../infrastructure/transformers/history-builder.js'
 import {
   findOriginalToolCall,
   getContentText,
-  mergeAdjacentMessages,
-  truncate
+  mergeAdjacentMessages
 } from '../infrastructure/transformers/message-transformer.js'
 import {
   convertToolsToCodeWhisperer,
@@ -37,13 +35,15 @@ interface TransformResult {
   convId: string
 }
 
+type ToastFunction = (message: string, variant: 'info' | 'warning' | 'success' | 'error') => void
+
 function buildCodeWhispererRequest(
   body: any,
   model: string,
   auth: KiroAuthDetails,
   think = false,
   budget = 20000,
-  reductionFactor = 1.0
+  showToast?: ToastFunction
 ): TransformResult {
   const req = typeof body === 'string' ? JSON.parse(body) : body
   const { messages, tools, system } = req
@@ -65,11 +65,7 @@ function buildCodeWhispererRequest(
   const lastMsg = msgs[msgs.length - 1]
   if (lastMsg && lastMsg.role === 'assistant' && getContentText(lastMsg) === '{') msgs.pop()
   const cwTools = tools ? convertToolsToCodeWhisperer(tools) : []
-  const longCtx = isLongContextModel(model)
-  const toolResultLimit = Math.floor((longCtx ? 1250000 : 250000) * reductionFactor)
-  let history = buildHistory(msgs, resolved, toolResultLimit)
-  const historyLimit = Math.floor((longCtx ? 4250000 : 850000) * reductionFactor)
-  history = truncateHistory(history, historyLimit)
+  let history = buildHistory(msgs, resolved)
 
   const curMsg = msgs[msgs.length - 1]
   if (!curMsg) throw new Error('Empty')
@@ -145,13 +141,13 @@ function buildCodeWhispererRequest(
       if (curMsg.tool_results) {
         for (const tr of curMsg.tool_results)
           curTrs.push({
-            content: [{ text: truncate(getContentText(tr), toolResultLimit) }],
+            content: [{ text: getContentText(tr) }],
             status: 'success',
             toolUseId: tr.tool_call_id
           })
       } else {
         curTrs.push({
-          content: [{ text: truncate(getContentText(curMsg), toolResultLimit) }],
+          content: [{ text: getContentText(curMsg) }],
           status: 'success',
           toolUseId: curMsg.tool_call_id
         })
@@ -162,7 +158,7 @@ function buildCodeWhispererRequest(
       for (const p of curMsg.content) {
         if (p.type === 'tool_result') {
           curTrs.push({
-            content: [{ text: truncate(getContentText(p.content || p), toolResultLimit) }],
+            content: [{ text: getContentText(p.content || p) }],
             status: 'success',
             toolUseId: p.tool_use_id
           })
@@ -278,17 +274,9 @@ export function transformToCodeWhisperer(
   model: string,
   auth: KiroAuthDetails,
   think = false,
-  budget = 20000,
-  reductionFactor = 1.0
+  budget = 20000
 ): PreparedRequest {
-  const { request, resolved, convId } = buildCodeWhispererRequest(
-    body,
-    model,
-    auth,
-    think,
-    budget,
-    reductionFactor
-  )
+  const { request, resolved, convId } = buildCodeWhispererRequest(body, model, auth, think, budget)
   const osP = os.platform(),
     osR = os.release(),
     nodeV = process.version.replace('v', '')
@@ -324,7 +312,7 @@ export function transformToSdkRequest(
   auth: KiroAuthDetails,
   think = false,
   budget = 20000,
-  reductionFactor = 1.0
+  showToast?: ToastFunction
 ): SdkPreparedRequest {
   const { request, resolved, convId } = buildCodeWhispererRequest(
     body,
@@ -332,7 +320,7 @@ export function transformToSdkRequest(
     auth,
     think,
     budget,
-    reductionFactor
+    showToast
   )
   return {
     conversationState: request.conversationState,
